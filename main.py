@@ -1,5 +1,4 @@
 import streamlit as st
-import api
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -7,6 +6,51 @@ import plotly.graph_objects as go
 
 # Layout
 st.set_page_config(layout = "wide")
+
+### FUNCTIONS ###
+@st.cache_data(ttl=600)
+def get_data_1(sheet_name, print_data):
+    url = f'https://script.google.com/macros/s/AKfycbz5mJEV8UeCT4Jn8NAZnj_Poq5OCXQ--E8XNcMK306g8ZDdyFf73p0fMo9YximVmIGK/exec?sheet={sheet_name}'
+    response = requests.get(url)
+    data = response.json()
+    return data[print_data]
+
+@st.cache_data(ttl=600)
+def calculate_equities(daily_returns, tpi_data):
+    """Calculate strategy and buy-and-hold equities based on daily returns and TPI signals."""
+    strategy_equity = [1]  # Starting equity for strategy
+    long_equity = [1]
+    buy_and_hold_equity = [1]  # Starting equity for buy-and-hold
+
+
+    # Calculate the equity based on signals in 'tpi' column
+    for i, signal in enumerate(tpi_data):
+        if i < len(daily_returns):
+            daily_return = daily_returns[i]
+
+
+            # Strategy equity update based on 'tpi' signal
+            if signal > 0:
+                strategy_equity.append(strategy_equity[-1] * (1 + daily_return))  # Long
+                long_equity.append(long_equity[-1] * (daily_return)) # Long Only
+            elif signal < 0:
+                strategy_equity.append(strategy_equity[-1] * (1 - daily_return))  # Short
+                long_equity.append(long_equity[-1] )
+            else:
+                strategy_equity.append(strategy_equity[-1])  # Neutral/cash
+                long_equity.append(long_equity[-1] )
+
+
+            # Buy-and-hold equity (always long)
+            buy_and_hold_equity.append(buy_and_hold_equity[-1] * (1 + daily_return))
+        else:
+            # If daily returns data is shorter than tpi data
+            strategy_equity.append(strategy_equity[-1])
+            buy_and_hold_equity.append(buy_and_hold_equity[-1])
+
+
+    return strategy_equity, long_equity, buy_and_hold_equity
+### FUNCTIONS ###
 
 
 # Title of the dashboard
@@ -25,45 +69,12 @@ backtest_for = st.text_input("Enter the key for daily returns (e.g., 'daily_retu
 uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
 
 
-@st.cache_data(ttl=600)
-def calculate_equities(daily_returns, tpi_data):
-    """Calculate strategy and buy-and-hold equities based on daily returns and TPI signals."""
-    strategy_equity = [1]  # Starting equity for strategy
-    buy_and_hold_equity = [1]  # Starting equity for buy-and-hold
-
-
-    # Calculate the equity based on signals in 'tpi' column
-    for i, signal in enumerate(tpi_data):
-        if i < len(daily_returns):
-            daily_return = daily_returns[i]
-
-
-            # Strategy equity update based on 'tpi' signal
-            if signal > 0:
-                strategy_equity.append(strategy_equity[-1] * (1 + daily_return))  # Long
-            elif signal < 0:
-                strategy_equity.append(strategy_equity[-1] * (1 - daily_return))  # Short
-            else:
-                strategy_equity.append(strategy_equity[-1])  # Neutral/cash
-
-
-            # Buy-and-hold equity (always long)
-            buy_and_hold_equity.append(buy_and_hold_equity[-1] * (1 + daily_return))
-        else:
-            # If daily returns data is shorter than tpi data
-            strategy_equity.append(strategy_equity[-1])
-            buy_and_hold_equity.append(buy_and_hold_equity[-1])
-
-
-    return strategy_equity, buy_and_hold_equity
-
-
 # Button to perform backtest if conditions are met
 if st.button("Perform Backtest"):
     if sheet_name and backtest_for and uploaded_file is not None:
         try:
             # Fetch data using the get_data_1 function from api.py
-            daily_returns_data = api.get_data_1(sheet_name, backtest_for)
+            daily_returns_data = get_data_1(sheet_name, backtest_for)
             daily_returns = pd.Series(daily_returns_data)  # Convert to Pandas Series
 
 
@@ -76,13 +87,14 @@ if st.button("Perform Backtest"):
 
 
                 # Calculate and cache the equities
-                strategy_equity, buy_and_hold_equity = calculate_equities(daily_returns, df['tpi'])
+                strategy_equity, long_equity buy_and_hold_equity = calculate_equities(daily_returns, df['tpi'])
 
 
                 # Function to plot the equity chart
                 def plot_equity_chart(yaxis_type='linear', title_suffix=''):
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=df['date'], y=strategy_equity[1:], mode='lines', name='Strategy Equity'))
+                    fig.add_trace(go.Scatter(x=df['date'], y=long_equity[1:], mode='lines', name='Long Only'))
                     fig.add_trace(go.Scatter(x=df['date'], y=buy_and_hold_equity[1:], mode='lines', name='Buy and Hold Equity'))
                    
                     # Customize layout with adjustable y-axis type
