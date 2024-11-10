@@ -87,7 +87,7 @@ if st.button("Perform Backtest"):
 
 
                 # Calculate and cache the equities
-                strategy_equity, long_equity buy_and_hold_equity = calculate_equities(daily_returns, df['tpi'])
+                strategy_equity, long_equity, buy_and_hold_equity = calculate_equities(daily_returns, df['tpi'])
 
 
                 # Function to plot the equity chart
